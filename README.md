@@ -9,6 +9,8 @@
 
 `otter` 是一个用于生成应用脚手架的 CLI，默认基于 [`app-layout`](https://github.com/jeffinity/app-layout) 模板创建项目，并支持单仓与大仓两种组织模式。
 
+> 主要支持平台：Linux 与 macOS（OSX）。
+
 ## 核心能力
 
 ### `new`
