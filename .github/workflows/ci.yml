@@ -1,0 +1,43 @@
+name: Test
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: [1.25.x]
+    env:
+      OS: ${{ matrix.os }}
+      GO: ${{ matrix.go }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Run tests
+        run: go test -race -coverprofile coverage.txt -covermode atomic ./...
+
+      - name: Run tests with checklinkname=0
+        run: go test -race -tags allow_linkname -ldflags "-checklinkname=0" -coverprofile coverage-linkname.txt -covermode atomic ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          env_vars: OS,GO
+          flags: unittests
+          fail_ci_if_error: true
+          files: ./coverage.txt,./coverage-linkname.txt
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
