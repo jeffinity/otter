@@ -77,6 +77,8 @@ func CmdNew() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.layoutSource, "repo", "r", appnew.DefaultLayoutRepo, "layout 源（支持 git 地址或本地目录）")
 	cmd.Flags().StringVarP(&opts.outputDir, "output", "o", ".", "输出基目录（单仓模式会在其下创建 <应用名> 目录）")
 	cmd.Flags().BoolVarP(&opts.monoRepo, "mono", "m", false, "启用大仓模式（输出目录中必须已存在 app 子目录）")
+	_ = cmd.MarkFlagDirname("repo")
+	_ = cmd.MarkFlagDirname("output")
 	return cmd
 }
 

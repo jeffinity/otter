@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -9,7 +10,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use: "newapp",
+	Use: "otter",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := cmd.Help()
 		if err != nil {
@@ -21,11 +22,14 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(CmdVersion())
 	rootCmd.AddCommand(CmdNew())
+	rootCmd.AddCommand(CmdService())
+	rootCmd.AddCommand(CmdCompletion())
+	rootCmd.AddCommand(CmdConfigCompletion())
 }
 
 func main() {
 	logx.Init(logx.Config{
-		Prefix:     "newapp",
+		Prefix:     "otter",
 		Timestamp:  true,
 		Caller:     false,
 		TimeFormat: time.Kitchen,
@@ -33,7 +37,7 @@ func main() {
 
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		logx.SetPrefix(commandPrefix(cmd))
-		if cmd.Name() != "version" {
+		if cmd.Name() == "new" {
 			ShowInfo()
 		}
 	}
@@ -41,6 +45,7 @@ func main() {
 	err := rootCmd.Execute()
 	if err != nil {
 		logx.ErrorErr(err, "命令执行失败")
+		os.Exit(1)
 	}
 }
 
@@ -50,6 +55,8 @@ func commandPrefix(cmd *cobra.Command) string {
 		return "🆕 new"
 	case "version":
 		return "version"
+	case "service":
+		return "service"
 	default:
 		return cmd.Name()
 	}

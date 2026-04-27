@@ -7,105 +7,99 @@
 [![Test Status](https://github.com/jeffinity/otter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jeffinity/otter/actions/workflows/ci.yml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/jeffinity/otter/branch/main/graph/badge.svg)](https://codecov.io/gh/jeffinity/otter)
 
-`otter` 是一个用于生成应用脚手架的 CLI，默认基于 [`app-layout`](https://github.com/jeffinity/app-layout) 模板创建项目，并支持单仓与大仓两种组织模式。
+`otter` 是一个面向开发与运维场景的 Go CLI 工具集合。当前仓库提供应用脚手架生成、Shell 补全脚本生成与安装、版本信息展示，并正在迁移服务管理能力。
 
-> 主要支持平台：Linux 与 macOS（OSX）。
+主要支持平台：
 
-## 核心能力
+- `new`、`completion`、`version`：Linux 与 macOS。
+- `config-completion`：仅 Linux。
+- `service`：仅 Linux，非 Linux 运行会直接返回不支持错误。
 
-### `new`
+## 安装与构建
 
-- 使用方式 1：单仓模式（默认）
-  - 命令：`otter new <模块路径> <应用名>`
-  - 示例：`otter new github.com/acme/order order-api`
-- 使用方式 2：大仓模式建仓
-  - 命令：`otter new -m <模块路径> <应用名>`
-  - 示例：`otter new -m github.com/acme/mono order-api`
-- 使用方式 3：大仓模式新增应用
-  - 命令：`otter new -m <应用名>`
-  - 示例：`otter new -m order-api`
-
-参数说明：
-- `-m, --mono`：启用大仓模式
-- `-o, --output`：输出基目录
-- `-r, --repo`：layout 源（支持 git 地址或本地目录）
-
-## 环境要求
+环境要求：
 
 - Go `1.25.5+`
 - Git
 - [Task](https://taskfile.dev/)
 
-## 快速开始
+常用命令：
 
 ```bash
-git clone <your-repo-url>
-cd otter
 task check
+task lint
 task build
+task build-linux-amd64
+task build-linux-arm64
+task deploy -- <host>
 ```
 
-构建产物默认在：
+构建产物默认位于：
 
 ```text
 target/otter/<os>/<arch>/otter
 ```
 
-## 使用说明（按子命令）
+## 子命令
 
 ### `new`
 
-用于创建新项目脚手架，支持三条主要路线：
+基于 app-layout 模板创建新项目，支持单仓模式和大仓模式。
 
-1. 单仓模式（默认）
+常用示例：
 
 ```bash
 otter new github.com/acme/order order-api
-```
-
-输出目录：`./order-api`
-
-2. 大仓模式建仓（指定模块路径 + 应用名）
-
-```bash
 otter new -m github.com/acme/mono order-api
-```
-
-输出目录：`./order-api`  
-应用目录：`./order-api/app/order-api`
-
-3. 大仓模式建 app（仅应用名）
-
-```bash
 otter new -m order-api
 ```
 
-要求输出目录已存在 `app/` 与有效 `go.mod`。  
-输出目录：`./app/order-api`
+完整说明见 [doc/new.md](doc/new.md)。
 
-常用参数：
-- `-r, --repo`：layout 源（git 地址或本地目录）
-- `-o, --output`：输出基目录
-- `-m, --mono`：启用大仓模式
+### `service`
+
+服务管理命令入口，用于承载原 `ambot-service` 的服务查询、启停、安装、编辑、审计和集群模式能力。该子命令仅支持 Linux。
+
+常用形式：
+
+```bash
+otter service status
+otter service start <service>
+otter service log -f <service>
+```
+
+完整说明见 [doc/service.md](doc/service.md)。
+
+### `completion`
+
+生成 Shell 补全脚本，支持 `bash`、`zsh`、`fish` 和 `powershell`。
+
+```bash
+otter completion bash
+otter completion zsh
+```
+
+完整说明见 [doc/completion.md](doc/completion.md)。
+
+### `config-completion`
+
+在 Linux 上安装补全脚本到用户级或系统级补全目录，支持 `bash`、`zsh` 和 `fish`。
+
+```bash
+otter config-completion bash
+otter config-completion --system zsh
+```
+
+完整说明见 [doc/completion.md](doc/completion.md)。
 
 ### `version`
 
-显示构建信息与版本号。
+显示当前二进制的构建信息、版本、构建时间和提交号。
 
 ```bash
 otter version
 ```
 
-后续新增子命令将继续按该结构补充文档。
+## 开发说明
 
-## 开发命令
-
-```bash
-task check            # 环境与工具检查
-task lint             # 代码检查
-task conf -- .        # 生成配置 protobuf
-task wire -- .        # 生成 wire
-task build -- -f      # 本机构建
-task build-linux-amd64
-task deploy -- <app>
-```
+本仓库使用 `AGENTS.md` 约定 AI 代码变更流程、测试要求和文档同步规则。涉及顶层子命令、命令参数、flag、示例或行为变更时，必须同步更新 README 和 `doc/` 下对应子命令文档；涉及核心实现设计时同步更新 `design/`。
