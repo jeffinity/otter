@@ -52,6 +52,44 @@ func TestPrintStaticToBuffer(t *testing.T) {
 	}
 }
 
+func TestPrinterPlainOutput(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	printer := NewPrinter(&buf, true)
+
+	if err := printer.Println("hello"); err != nil {
+		t.Fatalf("Println() returned error: %v", err)
+	}
+	if err := printer.Commandln("journalctl --unit=api"); err != nil {
+		t.Fatalf("Commandln() returned error: %v", err)
+	}
+	if err := printer.Headerln("# header"); err != nil {
+		t.Fatalf("Headerln() returned error: %v", err)
+	}
+	if err := printer.Commentln("# comment"); err != nil {
+		t.Fatalf("Commentln() returned error: %v", err)
+	}
+
+	want := "hello\njournalctl --unit=api\n# header\n# comment\n"
+	if got := buf.String(); got != want {
+		t.Fatalf("printer output = %q, want %q", got, want)
+	}
+}
+
+func TestPrinterColorOutput(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	printer := NewPrinter(&buf, false)
+	if err := printer.Commandln("journalctl --unit=api"); err != nil {
+		t.Fatalf("Commandln() returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "\x1b[") {
+		t.Fatalf("expected ANSI output, got %q", buf.String())
+	}
+}
+
 func TestNewSpinnerUsesMiniDot(t *testing.T) {
 	t.Parallel()
 

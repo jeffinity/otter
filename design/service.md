@@ -1,16 +1,16 @@
 # `otter service` 核心实现设计
 
-本文档描述 `otter service` 的核心实现设计、迁移边界和后续落地约束。用户可见的命令用法维护在 `doc/service.md`。
+本文档描述 `otter service` 的核心实现设计、实现边界和后续落地约束。用户可见的命令用法维护在 `doc/service.md`。
 
 ## 目标
 
-`otter service` 是 Linux 服务管理入口，用于承载原 `ambot-service` 的服务查询、启停、安装、编辑、审计、自检和集群模式能力。当前代码已经建立命令树、flag/alias 契约、Linux 平台门禁、路径配置基础包；真实 handler 仍在迁移中。
+`otter service` 是 Linux 服务管理入口，用于服务查询、启停、安装、编辑、审计和自检。当前代码已经建立命令树、flag/alias 契约、Linux 平台门禁、路径配置基础包，并已落地真实业务 handler。
 
 设计目标：
 
 - CLI 契约稳定，所有子命令、别名、flag 和隐藏状态由测试锁定。
 - 命令层只做参数解析、互斥校验、handler 编排和用户输出。
-- 服务发现、systemd 调用、日志读取、安装生成、审计、集群通信等能力拆到 `internal/` 子包。
+- 服务发现、systemd 调用、日志读取、安装生成和审计等能力拆到 `internal/` 子包。
 - Linux-only 能力在非 Linux 平台可编译，运行时报明确不支持错误。
 - 测试通过接口注入或 fake runner 覆盖，不依赖真实 `systemctl`、`journalctl`、文件系统系统目录或网络。
 
@@ -19,8 +19,38 @@
 | 位置 | 当前职责 | 后续职责 |
 | --- | --- | --- |
 | `cmd/service.go` | 将顶层命令挂接到 root | 保持薄封装 |
-| `internal/servicecmd` | Cobra 命令树、参数结构、平台门禁、补全占位 | 注入 service manager、runner、renderer 并调用真实 handler |
-| `internal/serviceconfig` | otter 服务常量、systemd/drop-in 路径、core 地址 | 统一维护服务管理固定路径和名称 |
+| `internal/service/command` | Cobra 命令树、参数结构、平台门禁、补全占位、服务常量 | 注入 service manager、runner、renderer 并调用真实 handler |
+| `internal/service/command/status` | `status` 服务查询、匹配、过滤、排序、systemctl store 和输出渲染 | 为查询类子命令提供共享服务选择逻辑 |
+| `internal/service/command/list` | `list` 服务名称输出 | 复用 `status` 包的服务选择和 systemd 查询能力 |
+| `internal/service/command/detail` | `detail` 服务选择后前台执行 `systemctl status` | 保持 systemctl 前台输出语义稳定 |
+| `internal/service/command/showproperty` | `show-property` 读取并渲染 systemd properties | 保持字段顺序和 `--all` 语义稳定 |
+| `internal/service/command/servicefile` | classic/package service 文件定位和 `[X-Otter]` 元信息解析 | 供 view、log、安装接管等命令复用 |
+| `internal/service/command/view` | `view` 展示 service 文件和 docker compose 信息 | 保持 classic/package 查找与 header 裁剪语义稳定 |
+| `internal/service/command/log` | `log` 选择 custom log 或 journalctl 并前台执行 | 保持 tail/less/journalctl 参数语义稳定 |
+| `internal/service/command/daemonreload` | `daemon-reload` 前台执行 systemctl daemon-reload | 保持前台调用语义稳定 |
+| `internal/service/command/start` | `start` 选择服务并前台执行 systemctl start | 保持 action 过滤、`--reload`、`--trace`、`--stop-after` 语义稳定 |
+| `internal/service/command/stop` | `stop` 选择服务并前台执行 systemctl stop | 保持 action 过滤语义稳定 |
+| `internal/service/command/restart` | `restart` 选择服务并前台执行 systemctl restart | 保持 action 过滤、`--reload`、`--trace` 语义稳定 |
+| `internal/service/command/reload` | `reload` 选择服务并前台执行 systemctl reload | 保持 action 过滤和 reload 参数错误语义稳定 |
+| `internal/service/command/enable` | `enable` 选择服务并前台执行 systemctl enable | 保持 action 过滤和 `--start` 语义稳定 |
+| `internal/service/command/disable` | `disable` 选择服务并前台执行 systemctl disable | 保持 action 过滤和 `--stop` 语义稳定 |
+| `internal/service/command/grouplist` | `group-list` 读取并渲染服务组 | 保持组名排序、`--one` 和 `--services` 输出语义稳定 |
+| `internal/service/command/groupstart` | `group-start` 展开服务组后执行 start | 保持服务组去重、缺组错误和 `--stop-after` 透传语义稳定 |
+| `internal/service/command/groupstop` | `group-stop` 展开服务组后执行 stop | 保持服务组去重和缺组错误语义稳定 |
+| `internal/service/command/grouprestart` | `group-restart` 展开服务组后执行 restart | 保持服务组去重和缺组错误语义稳定 |
+| `internal/service/command/installservice` | `install-service` 安装 classic service | 保持 name 推导和 enable/start 语义稳定 |
+| `internal/service/command/installcommand` | `install-command` 生成并安装 command service | 保持模板、`--wd`、`--no-install` 和安装语义稳定 |
+| `internal/service/command/installdockercompose` | `exp-install-docker-compose` 生成 docker compose service | 保持 compose 文件选择、复制和 service 生成语义稳定 |
+| `internal/service/command/linkservice` | `link-service` 接管已有 systemd unit | 保持 symlink 接管语义稳定 |
+| `internal/service/command/edit` | `edit` 编辑 classic/package service | 保持 editor、保存、regen 和 restart 确认语义稳定 |
+| `internal/service/command/regenerate` | `re-generate` 刷新 package service | 保持 restart flag 语义稳定 |
+| `internal/service/command/audit` | `audit` 写入 systemd hook 审计 | 保持 hidden、必填 flag 和 audit bypass 语义 |
+| `internal/service/command/showpids` | `show-pids` 读取服务 cgroup PID | 保持 cgroup.procs 读取和空格分隔输出语义稳定 |
+| `internal/service/command/showports` | `show-ports` 查询服务 PID 对应监听端口 | 保持 LISTEN 连接输出语义稳定 |
+| `internal/service/command/selfcheck` | `self-check` 以维护子程序名重新执行当前二进制 | 保持 hidden pass-through 自检语义稳定 |
+| `internal/service/command/install` | `install` 以维护子程序名重新执行当前二进制 | 保持 hidden pass-through 安装入口语义稳定 |
+| `internal/service/command/upsertself` | `upsert-self` 以维护子程序名重进当前二进制 | 保持 hidden reexec 自更新入口语义稳定 |
+| `internal/service/command/upsertcluster` | `upsert-cluster` 以维护子程序名重进当前二进制 | 保持 hidden reexec 集群更新入口语义稳定 |
 | `internal/otterfs` | 可配置路径 provider | 为测试和安装流程提供路径注入 |
 | `pkg/tuix` | 用户输出渲染 | 用于状态、列表、详情等命令输出 |
 | `pkg/logx` | 日志 | 用于调试和错误上下文 |
@@ -34,7 +64,6 @@
 | `internal/serviceinstall` | 生成和安装 service、command service、docker compose service |
 | `internal/serviceaudit` | systemd hook 审计记录与 bypass 语义 |
 | `internal/servicegroup` | 服务组读取、匹配、批量动作 |
-| `internal/servicecluster` | 集群目标读取和远程执行编排 |
 
 包名可以按实际落地微调，但必须保持命令层不直接拼接系统命令、不直接读写系统路径。
 
@@ -49,7 +78,7 @@ otter service (status) <services...>
 关键行为：
 
 - `PersistentPreRunE` 统一做平台门禁：`runtime.GOOS != linux` 时返回 `ErrUnsupportedPlatform`。
-- `--cluster/-c` 是根级 persistent flag；当前真实能力未实现时返回 not implemented。
+- 当前不提供 `--cluster` / `-c` 集群模式参数。
 - 根命令无子命令时默认分发到 `status` 语义。
 - 子命令通过 `ValidArgsFunction` 保留补全入口。
 
@@ -66,13 +95,13 @@ otter service (status) <services...>
 
 任何命令名、别名、flag、默认值、hidden 状态或参数数量变化，都必须同步更新：
 
-- `internal/servicecmd/command_test.go`
+- `internal/service/command/command_test.go`
 - `doc/service.md`
 - 本设计文档
 
 ## 依赖注入设计
 
-`servicecmd.New(deps Dependencies)` 当前只注入 `RuntimeOS`。后续真实实现应扩展 `Dependencies`，但要保持零值可用。
+`command.New(deps Dependencies)` 当前注入 `RuntimeOS`、`FS`、`StatusStore`、`ListStore`、`DetailStore`、`StatusRunner`、`DetailRunner`、`ShowPropertyGetter`、`ShowPropertyRunner`、`DaemonReloadRunner`、`ActionStore`、`ActionRunner`、`ActionAutoStopper`、`ActionTraceRunner`、`ActionExecutable`、`ActionEnviron`、`GroupListStore`、`ShowPidsFinder`、`ShowPortsPidFinder`、`ShowPortsConnFinder`、`SelfCheckRunner`、`SelfCheckExecutable`、`SelfCheckEnviron`、`InstallRunner`、`InstallExecutable`、`InstallEnviron`、`UpsertSelfRunner`、`UpsertSelfPath`、`UpsertSelfEnviron`、`UpsertSelfMkdirAll`、`UpsertClusterRunner`、`UpsertClusterPath`、`UpsertClusterEnv`、`UpsertClusterMkdir`、`ViewFinder`、`LogFinder`、`LogRunner`、`LogLookPath`、`Out`、`ErrOut`、`In`、`NoColor`、`Now` 和 `MonoNow`。后续真实实现应继续扩展 `Dependencies`，但要保持零值可用。
 
 建议依赖：
 
@@ -85,7 +114,6 @@ otter service (status) <services...>
 | `Systemd SystemdClient` | systemd 动作、属性、日志 |
 | `Installer Installer` | service 安装、生成、链接 |
 | `Groups GroupStore` | 服务组查询和批量动作 |
-| `Cluster ClusterClient` | 集群目标与远程执行 |
 | `Out Renderer` | 用户输出 |
 
 接口应按消费者定义在最靠近使用方的包内，不要提前抽象大而全的 manager。测试 fake 应覆盖命令需要的行为和参数断言。
@@ -108,13 +136,16 @@ otter service (status) <services...>
 | `FragmentPath` | unit 文件路径 |
 | `DropInPaths` | drop-in 路径 |
 | `Metadata` | `[X-Otter]` 扩展信息 |
-| `LegacyMetadata` | 兼容读取旧 `[X-Ambot]` 信息 |
 
-新写入的 unit metadata 必须使用 `[X-Otter]`。读取旧 `[X-Ambot]` 只作为迁移兼容能力，不应继续产生旧命名。
+unit metadata 必须使用 `[X-Otter]`，不读取或写入旧 metadata 段名。
+
+默认服务发现只从 otter 管理路径收集服务名：classic service 来自 `ClassicServicePath/*.service`，package service 来自 `PackageServicePath/*/*/*.service`，再对这些 unit 执行 `systemctl show` 获取状态。`status`、`list`、`detail`、启停动作和服务组动作都应使用该受管理服务集合，避免默认展示或批量操作系统中所有 systemd service。
+
+需要接管已有 systemd unit 的 `link-service` 可以使用全系统发现能力，从 `systemctl list-unit-files` 和 `systemctl list-units` 收集 systemd service；该路径同样只保留具体 service unit。未实例化模板 unit（`name@.service`）不能传给 `systemctl show`，应在发现阶段跳过；已实例化的 `name@instance.service` 继续按普通 service 处理。
 
 ## 路径设计
 
-路径统一由 `internal/serviceconfig` 和 `internal/otterfs.Provider` 提供。
+路径统一由 `internal/service/command` 常量和 `internal/otterfs.Provider` 提供。
 
 固定常量：
 
@@ -166,7 +197,18 @@ otter service (status) <services...>
 | `--only-package` | 仅 package 来源 |
 | `--only-classic` | 仅非 package 来源 |
 
-动作类命令默认只作用于 enabled 服务，除非显式选择 disabled。列表类命令默认展示 enabled 或 running 服务。过滤冲突应在命令层或发现层返回明确错误，不静默选择空集合。
+动作类命令默认只在 otter 关注的服务集合内作用于 enabled 服务，除非显式选择 disabled。列表类命令默认在 otter 关注的服务集合内展示 enabled 或 running 服务。过滤冲突应在命令层或发现层返回明确错误，不静默选择空集合。
+
+`status` 状态渲染应保持统一：运行中的状态字段使用绿色，非运行状态字段使用红色，`, disabled` 标记使用黄色；`--time-info` 的 monotonic 时间缺失或系统时间变化提示使用红色。列宽计算必须基于不带 ANSI 的状态文本，避免彩色输出破坏对齐。
+
+其他终端展示样式也应保持统一：
+
+- `show-property`：property 名称蓝色，`<no value>` 黄色，`NeedDaemonReload=true` 红色。
+- `view` 和 `log`：service 正文、Docker Compose 注释块、执行命令预览均保持 plain text，不额外使用 tuix 样式。
+- `link-service`：成功创建 symlink 后输出 `Create fake service (linked to <path>) success.`。
+- `install-service`、`edit`、`re-generate`：保留安装成功、保存/未变更、重新生成、是否重启和完成等关键提示。
+- `start --trace` / `restart --trace`：匹配多个服务时输出黄色 warning，并用 plain text 列出可手工执行的 `otter service log -f <service>` 命令。
+- `audit`：缺少 `--service-name` 或 `--action-name` 时输出红色 `Maybe you want to use \`otter-audit\`?` 提示，不写审计记录。
 
 ## systemd 与日志设计
 
@@ -176,7 +218,8 @@ otter service (status) <services...>
 
 | 能力 | 底层命令 |
 | --- | --- |
-| `Status/List` | `systemctl show`, `systemctl list-unit-files`, `systemctl list-units` |
+| `Status/List` | `systemctl show` over otter managed units |
+| `Link discovery` | `systemctl show`, `systemctl list-unit-files`, `systemctl list-units` |
 | `Start/Stop/Restart/Reload` | `systemctl start/stop/restart/reload` |
 | `Enable/Disable` | `systemctl enable/disable` |
 | `DaemonReload` | `systemctl daemon-reload` |
@@ -237,19 +280,9 @@ otter service (status) <services...>
 - `--service-name`
 - `--action-name`
 
-审计流程应支持 `OTTER_AUDIT_BYPASS` 环境变量，避免 otter 自身维护动作递归触发不必要审计。审计写入路径由 `serviceconfig.OtterCoreAuditFilePath` 或可注入配置提供。
+缺少任一 flag 时应保持明确的交互语义：输出红色迁移提示后直接返回，不执行审计写入。审计流程应支持 `OTTER_AUDIT_BYPASS` 环境变量，避免 otter 自身维护动作递归触发不必要审计。审计写入路径由 `command.OtterCoreAuditFilePath` 或可注入配置提供。
 
-隐藏维护命令 `self-check`、`install`、`upsert-self`、`upsert-cluster` 当前按 pass-through 设计保留迁移入口。真实实现落地时需要保持隐藏状态和别名兼容。
-
-## 集群模式
-
-`--cluster/-c` 是根级模式开关。集群模式允许的命令列表维护在 `doc/service.md`，后续实现应满足：
-
-- 集群目标从 `otterfs.Provider.ClusterServersFilePath()` 和 `ClusterCurrentServerFilePath()` 读取。
-- 本机和远端执行结果应保留节点维度。
-- 单节点失败不能无提示吞掉；需要汇总失败节点和原始错误。
-- 集群模式不支持的命令应返回明确错误。
-- 单元测试使用 fake cluster client，不真实执行 `ssh` 或网络请求。
+隐藏维护命令 `audit`、`self-check`、`install`、`upsert-self`、`upsert-cluster` 已按 hidden 入口语义落地，并保持隐藏状态、别名和 `DisableFlagParsing`。`audit` 在 Otter 中写入本地 JSONL 审计文件，使用 `OTTER_AUDIT_BYPASS` 控制跳过审计或写入错误是否阻断调用方。
 
 ## 输出设计
 
@@ -266,7 +299,7 @@ otter service (status) <services...>
 
 代码必须在非 Linux 平台编译通过。Linux-only 行为集中在运行期门禁和封装层：
 
-- `servicecmd` 根命令先返回 `ErrUnsupportedPlatform`。
+- `internal/service/command` 根命令先返回 `ErrUnsupportedPlatform`。
 - Linux 专用实现如需使用 build tags，应提供非 Linux stub。
 - 测试可以通过 `Dependencies{RuntimeOS: "linux"}` 覆盖平台分支。
 
@@ -275,7 +308,7 @@ otter service (status) <services...>
 错误应保持用户可修复：
 
 - 非 Linux：`otter service is only supported on linux`。
-- 未实现 handler：`otter service <command> is not implemented yet`，直到真实 handler 替换。
+- 未实现 handler：仅保留内部防御路径，普通业务子命令不应返回 not implemented。
 - 参数互斥：例如 `--asc` 与 `--desc` 同时出现必须报错。
 - 服务 pattern 无匹配：说明具体 pattern。
 - 系统命令失败：包含动作、服务名和命令输出摘要。
@@ -290,7 +323,9 @@ otter service (status) <services...>
 - 子命令存在性、alias、hidden 状态。
 - 关键 flags 存在性。
 - `status --asc --desc` 互斥校验。
-- `serviceconfig` 和 `otterfs.Provider` 路径契约。
+- `internal/service/command` 常量和 `otterfs.Provider` 路径契约。
+
+`status` 已补充 fake store/runner 单元测试，覆盖 pattern、`.service` 后缀、`all` / `*`、enabled/disabled/package/classic 过滤、排序、时间信息和 systemctl 参数。`list` 已补充服务选择、source 过滤、多行/单行输出和命令层接入测试。`detail` 已补充服务选择、`--no-pager` 参数、runner 错误透传和命令层接入测试。`show-property` 已补充默认字段、`--all`、时间格式、runner 参数和命令层接入测试。`view` 已补充 classic/package service 查找、header 裁剪和 compose 信息输出测试。`log` 已补充 custom log、journalctl、tail/less 参数、时间过滤、lookPath/runner 错误和命令层接入测试。`daemon-reload` 已补充 runner 参数、前缀输出、错误透传和命令层接入测试。`start`、`stop`、`restart`、`reload` 已补充 action 服务过滤、`all` / `*`、`.service` 后缀、`--reload`、`--trace`、`--stop-after` 注入和命令层接入测试；默认 auto-stop 通过结构化 `systemd-run --on-active=... systemctl stop ...` 调度。`enable`、`disable` 已补充 action 服务过滤、后续 start/stop 和命令层接入测试。`group-list` 已补充组排序、多行/单行输出、服务输出、classic/package service 文件 `[X-Otter] Group` 解析和命令层接入测试。`group-start`、`group-stop`、`group-restart` 已补充组展开、重复服务去重、缺失组错误、`--stop-after` 透传和命令层 alias 接入测试。安装与接管命令已补充 service 生成、compose 复制、symlink 接管、systemctl 参数和命令层接入测试。`edit`、`re-generate` 已补充 editor、prompt、regen、restart 决策和命令层接入测试。`audit` 已补充 bypass、must-audit 写入错误和命令层接入测试。`show-pids` 已补充 `.service` 后缀、cgroup v1/v2 路径、缺失 cgroup、非法 PID 和命令层接入测试。`show-ports` 已补充 PID 查询、LISTEN 过滤、连接错误跳过、`/proc/net/tcp` 解析和命令层接入测试。隐藏维护入口 `self-check`、`install`、`upsert-self`、`upsert-cluster` 已补充当前二进制重新执行、参数透传、`AS=` 环境变量处理、日志目录预创建和命令层 alias 接入测试。
 
 后续实现真实 handler 时，按风险补充：
 
@@ -299,21 +334,20 @@ otter service (status) <services...>
 - systemd client：使用 fake runner 断言命令参数，不执行真实 `systemctl`。
 - 安装流程：使用临时路径和 fake systemd，覆盖 no-install、force、enable/start 组合。
 - 日志：覆盖 `--follow` / `--until` 冲突、默认 lines、输出模式传递。
-- 集群：fake cluster client 覆盖成功、部分失败、不支持命令。
 - 非 Linux：所有 Linux-only 命令运行期返回明确错误且包可编译。
 
 修改用户可见命令契约时同步 `doc/service.md`；修改核心流程、路径、副作用、错误语义或测试策略时同步本文档。
 
-## 迁移落地顺序
+## 落地顺序
 
-建议按以下顺序迁移，降低一次性变更风险：
+建议按以下顺序落地，降低一次性变更风险：
 
 1. 抽象 `CommandRunner`、输出 renderer 和 service manager 接口，替换 `notImplemented` 的最小查询路径。
 2. 落地服务发现与过滤，先支撑 `status`、`list`、`detail`。
 3. 落地 systemd 动作命令：`start`、`stop`、`restart`、`reload`、`enable`、`disable`、`daemon-reload`。
 4. 落地日志、属性、view、pid/port 查询。
 5. 落地安装、链接、编辑、re-generate。
-6. 落地审计、自检、自更新和集群模式。
+6. 落地审计、自检和自更新。
 
 每一步都必须保持现有命令契约测试通过，并补充对应业务测试。
 
@@ -322,6 +356,6 @@ otter service (status) <services...>
 - 不在单元测试中真实执行 `systemctl`、`journalctl`、`ssh`、`docker` 或网络请求。
 - 不在测试中写入 `/etc`、`/usr/lib/systemd`、`/var/run`、`/data`。
 - 不在命令层拼接复杂 shell；外部命令参数必须通过 runner 结构化传递。
-- 不继续写入旧 `ambot` 命名的新配置或 metadata。
+- 不读写旧 metadata 段名。
 - 不把服务发现、过滤、系统调用和输出渲染混在同一个函数里。
 - 新增文件接近 800 行时按职责拆分。

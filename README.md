@@ -31,8 +31,10 @@ task lint
 task build
 task build-linux-amd64
 task build-linux-arm64
-task deploy -- <host>
+task deploy -- <host> [-f]
 ```
+
+`task deploy` 默认按 checksum 跳过未变化构建，追加 `-f` 可强制重新构建后部署。
 
 构建产物默认位于：
 
@@ -58,7 +60,7 @@ otter new -m order-api
 
 ### `service`
 
-服务管理命令入口，用于承载原 `ambot-service` 的服务查询、启停、安装、编辑、审计和集群模式能力。该子命令仅支持 Linux。
+服务管理命令入口，用于管理 otter 关注的 systemd service；该子命令仅支持 Linux。
 
 常用形式：
 

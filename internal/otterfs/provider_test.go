@@ -1,36 +1,51 @@
 package otterfs
 
 import (
-	"strings"
 	"testing"
 )
 
 func TestDefaultProviderUsesOtterPaths(t *testing.T) {
 	fs := Default()
 
-	paths := []string{
-		fs.ConfigFilePath(),
-		fs.MachineIDFilePath(),
-		fs.DatabaseFilePath(),
-		fs.ClusterCurrentServerFilePath(),
-		fs.ClusterServersFilePath(),
-		fs.RolesDirectoryPath(),
-		fs.DataPath(),
-		fs.ClassicServicePath(),
-		fs.PackageServicePath(),
-		fs.SystemScriptsPath(),
-		fs.PackageInstallPath(),
-		fs.PackageInstallPathFor("pkg"),
-		fs.PackageServiceBasePath("pkg"),
-		fs.PackageServicePathFor("pkg", "api"),
-		fs.ServicesShortcutPath(),
-		fs.ServicesInstallPath("pkg"),
-		fs.ServicesInstallPathFor("pkg", "api"),
-	}
-
-	for _, p := range paths {
-		if strings.Contains(p, "ambot") {
-			t.Fatalf("path %q should not contain legacy name", p)
+	for name, tc := range map[string]struct {
+		got  string
+		want string
+	}{
+		"ConfigFilePath":               {got: fs.ConfigFilePath(), want: "/etc/otter/.config"},
+		"MachineIDFilePath":            {got: fs.MachineIDFilePath(), want: "/etc/otter/machine-id"},
+		"DatabaseFilePath":             {got: fs.DatabaseFilePath(), want: "/etc/otter/otter-service.db"},
+		"ClusterCurrentServerFilePath": {got: fs.ClusterCurrentServerFilePath(), want: "/etc/otter/target"},
+		"ClusterServersFilePath":       {got: fs.ClusterServersFilePath(), want: "/etc/otter/targets"},
+		"RolesDirectoryPath":           {got: fs.RolesDirectoryPath(), want: "/etc/otter/roles"},
+		"DataPath":                     {got: fs.DataPath(), want: "/data/.otter/otter-packages"},
+		"ClassicServicePath":           {got: fs.ClassicServicePath(), want: "/etc/otter/services"},
+		"PackageServicePath":           {got: fs.PackageServicePath(), want: "/etc/otter/services/.do-not-edit"},
+		"SystemScriptsPath":            {got: fs.SystemScriptsPath(), want: "/etc/otter/scripts"},
+		"PackageInstallPath":           {got: fs.PackageInstallPath(), want: "/data/.otter/otter-packages/packages"},
+		"PackageInstallPathFor": {
+			got:  fs.PackageInstallPathFor("pkg"),
+			want: "/data/.otter/otter-packages/packages/pkg",
+		},
+		"PackageServiceBasePath": {
+			got:  fs.PackageServiceBasePath("pkg"),
+			want: "/etc/otter/services/.do-not-edit/pkg",
+		},
+		"PackageServicePathFor": {
+			got:  fs.PackageServicePathFor("pkg", "api"),
+			want: "/etc/otter/services/.do-not-edit/pkg/api",
+		},
+		"ServicesShortcutPath": {got: fs.ServicesShortcutPath(), want: "/data/.otter/otter-packages/services"},
+		"ServicesInstallPath": {
+			got:  fs.ServicesInstallPath("pkg"),
+			want: "/data/.otter/otter-packages/packages/pkg/services",
+		},
+		"ServicesInstallPathFor": {
+			got:  fs.ServicesInstallPathFor("pkg", "api"),
+			want: "/data/.otter/otter-packages/packages/pkg/services/api",
+		},
+	} {
+		if tc.got != tc.want {
+			t.Fatalf("%s = %q, want %q", name, tc.got, tc.want)
 		}
 	}
 }

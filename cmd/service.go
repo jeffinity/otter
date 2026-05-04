@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/jeffinity/otter/internal/servicecmd"
+	servicecmd "github.com/jeffinity/otter/internal/service/command"
 )
 
 func CmdService() *cobra.Command {

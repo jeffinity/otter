@@ -1,4 +1,4 @@
-package serviceconfig
+package command
 
 const (
 	OtterService = "otter service"
