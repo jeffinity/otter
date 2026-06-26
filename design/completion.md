@@ -55,7 +55,7 @@ otter config-completion [bash|zsh|fish]
 - 默认写用户级目录，避免要求 sudo。
 - `--system` 写常见系统级目录。
 - `--dir` 允许用户、打包脚本或特殊发行版显式指定目录。
-- 不自动修改 `.bashrc`、`.zshrc` 或 fish 配置，避免不可逆地改动用户 profile。
+- 默认不修改 `.bashrc`、`.zshrc` 或 fish 配置；仅当 bash 或 zsh 使用 `--service-alias` 时，幂等写入托管代码块。
 
 安装流程：
 
@@ -66,6 +66,17 @@ otter config-completion [bash|zsh|fish]
 5. 创建安装目录。
 6. 写入脚本文件。
 7. 输出安装路径和生效提示。
+8. 若 bash 或 zsh 且传入 `--service-alias`，向对应 rc 文件写入 alias+completion 桥接托管块；默认分别为 `~/.bashrc`、`~/.zshrc`。
+
+### `--service-alias` 幂等策略
+
+- 仅允许字母、数字、下划线，避免生成非法函数名。
+- rc 文件写入使用 marker 包裹：
+  - `# >>> otter:otter-service-alias-completion >>>`
+  - `# <<< otter:otter-service-alias-completion <<<`
+- 重复执行时替换同一托管块，不重复追加，满足幂等。
+- bash 使用 `complete -F` 包装 `otter __complete service`。
+- zsh 使用 `compdef` 包装 `_otter`，把 alias 命令词重写为 `otter service` 后复用现有 Cobra zsh completion。
 
 ## 路径策略
 
@@ -134,6 +145,7 @@ otter config-completion [bash|zsh|fish]
 - `completion bash` 输出包含 Cobra bash entrypoint。
 - `completion` 输出包含新顶层命令。
 - `config-completion bash` 写入用户级默认路径。
+- `config-completion zsh --service-alias` 幂等写入 `~/.zshrc` 托管块。
 - `config-completion --dir` 配合自动 Shell 识别写入指定目录。
 - 非 Linux 执行 `config-completion` 返回明确错误。
 

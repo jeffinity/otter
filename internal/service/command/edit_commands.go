@@ -12,7 +12,7 @@ func (b *commandBuilder) editCommandReal() *cobra.Command {
 		Use:               "edit <service>",
 		Short:             "编辑服务",
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return editcmd.Run(cmd.Context(), args[0], editcmd.Dependencies{
 				Finder:       b.deps.EditFinder,
@@ -41,7 +41,7 @@ func (b *commandBuilder) reGenerateCommandReal() *cobra.Command {
 		Short:             "刷新指定 service 文件的配置",
 		Hidden:            true,
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return regeneratecmd.Run(cmd.Context(), args[0], regeneratecmd.Options{
 				Restart:    opts.restart,

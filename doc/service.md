@@ -24,9 +24,14 @@ otter service status
 
 otter service api worker
 otter service status api worker
+
+otter service -t
+otter service status -t
 ```
 
 当前不提供 `--cluster` / `-c` 集群模式参数。
+
+默认入口等价于 `status`，因此支持 `status` 的全部选项，例如 `-t`、`--since`、`--asc`、`--desc`、`--disabled`、`--only-package` 和 `--only-classic`。
 
 ## 服务查询命令
 
@@ -510,9 +515,9 @@ otter service idc [选项] [file]
 将当前已有 systemd service 纳入 otter service 管理。
 
 ```bash
-otter service link-service <service>
-otter service link <service>
-otter service fake <service>
+otter service link-service <service>...
+otter service link <service>...
+otter service fake <service>...
 ```
 
 别名：
@@ -525,10 +530,36 @@ otter service fake <service>
 行为：
 
 - 输入可带 `.service` 后缀。
+- 可通过空格传入多个 service，按参数顺序逐个接管，等价于多次执行 `otter service link <service>`。
 - `otter-core` 必须由 otter 外部管理，不能接管。
 - 如果 classic 管理路径中已存在同名 service，会返回已安装/已接管错误。
 - 通过 systemd 查询到已有 unit 的 `FragmentPath` 后，在 classic 管理路径创建 symlink，不改写原始 unit。
 - 接管成功后输出 `Create fake service (linked to <path>) success.`。
+
+### `unlink-service`
+
+取消 otter 对当前已有 systemd service 的接管。
+
+```bash
+otter service unlink-service <service>
+otter service unlink <service>
+otter service unfake <service>
+```
+
+别名：
+
+- `unlink`
+- `unfake`
+- `remove-fake`
+- `remove-fake-service`
+
+行为：
+
+- 输入可带 `.service` 后缀。
+- 只删除 classic 管理路径中的 symlink，不改写原始 systemd unit。
+- 如果 classic 路径中不存在对应 symlink，会返回 `service <name> is not linked by otter`。
+- 如果 classic 路径中存在的是普通 service 文件而不是 symlink，会拒绝删除并返回 `service <name> is managed by otter but not linked`。
+- 取消接管成功后输出 `Remove fake service link <path> success.`。
 
 ## 编辑与刷新命令
 

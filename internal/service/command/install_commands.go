@@ -7,6 +7,7 @@ import (
 	installdockercomposecmd "github.com/jeffinity/otter/internal/service/command/installdockercompose"
 	installservicecmd "github.com/jeffinity/otter/internal/service/command/installservice"
 	linkservicecmd "github.com/jeffinity/otter/internal/service/command/linkservice"
+	unlinkservicecmd "github.com/jeffinity/otter/internal/service/command/unlinkservice"
 )
 
 func (b *commandBuilder) installServiceCommandReal() *cobra.Command {
@@ -99,19 +100,39 @@ func (b *commandBuilder) installDockerComposeCommandReal() *cobra.Command {
 
 func (b *commandBuilder) linkServiceCommandReal() *cobra.Command {
 	return &cobra.Command{
-		Use:     "link-service <service>",
+		Use:     "link-service <service>...",
 		Aliases: []string{"link", "install-fake", "fake", "install-fake-service"},
 		Short:   "将当前已经存在的 service 纳入 otter service 管理",
-		Args:    cobra.ExactArgs(1),
+		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store := b.deps.LinkStore
 			if store == nil {
 				store = b.deps.StatusStore
 			}
-			return linkservicecmd.Run(cmd.Context(), args[0], linkservicecmd.Dependencies{
-				Store: store,
-				FS:    b.deps.FS,
-				Out:   output(cmd, b.deps.Out),
+			for _, arg := range args {
+				if err := linkservicecmd.Run(cmd.Context(), arg, linkservicecmd.Dependencies{
+					Store: store,
+					FS:    b.deps.FS,
+					Out:   output(cmd, b.deps.Out),
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+}
+
+func (b *commandBuilder) unlinkServiceCommandReal() *cobra.Command {
+	return &cobra.Command{
+		Use:     "unlink-service <service>",
+		Aliases: []string{"unlink", "unfake", "remove-fake", "remove-fake-service"},
+		Short:   "取消 otter 对已有 service 的接管",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return unlinkservicecmd.Run(cmd.Context(), args[0], unlinkservicecmd.Dependencies{
+				FS:  b.deps.FS,
+				Out: output(cmd, b.deps.Out),
 			})
 		},
 	}

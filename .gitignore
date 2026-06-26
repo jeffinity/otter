@@ -1,5 +1,6 @@
 # ========================
 
+.build
 go-cache
 .build_checksum
 target

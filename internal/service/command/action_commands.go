@@ -41,7 +41,7 @@ func (b *commandBuilder) reloadCommand() *cobra.Command {
 		Use:               "reload service [services...]",
 		Short:             "重载服务",
 		Args:              reloadArgs,
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runAction(cmd, args, "reload", opts)
 		},
@@ -57,7 +57,7 @@ func (b *commandBuilder) enableCommand() *cobra.Command {
 		Short:                 "启用服务",
 		DisableFlagsInUseLine: true,
 		Args:                  actionArgs,
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runEnable(cmd, args, opts)
 		},
@@ -74,7 +74,7 @@ func (b *commandBuilder) disableCommand() *cobra.Command {
 		Short:                 "禁用服务",
 		DisableFlagsInUseLine: true,
 		Args:                  actionArgs,
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runDisable(cmd, args, opts)
 		},
@@ -90,7 +90,7 @@ func (b *commandBuilder) actionCommand(use string, short string, action string, 
 		Short:                 short,
 		DisableFlagsInUseLine: true,
 		Args:                  actionArgs,
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runAction(cmd, args, action, opts)
 		},

@@ -12,7 +12,7 @@ func (b *commandBuilder) viewCommand() *cobra.Command {
 		Use:               "view [service]",
 		Short:             "展示服务文件",
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runView(cmd, args[0])
 		},
@@ -41,7 +41,7 @@ func (b *commandBuilder) logCommand() *cobra.Command {
 		Short:                 "查看服务日志",
 		DisableFlagsInUseLine: true,
 		Args:                  cobra.ExactArgs(1),
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runLog(cmd, args[0], opts)
 		},

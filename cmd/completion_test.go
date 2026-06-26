@@ -42,6 +42,11 @@ func TestCompletionCommandTree(t *testing.T) {
 			t.Fatalf("config-completion flag %q not found", name)
 		}
 	}
+	for _, name := range []string{"service-alias", "bashrc", "zshrc"} {
+		if flag := configCompletion.Flags().Lookup(name); flag == nil {
+			t.Fatalf("config-completion flag %q not found", name)
+		}
+	}
 }
 
 func TestConfigCompletionInstallsUserBash(t *testing.T) {
@@ -85,6 +90,84 @@ func TestConfigCompletionRejectsUnsupportedPlatform(t *testing.T) {
 	_, err := executeTestCommand(root, "config-completion", "bash")
 	if err == nil || err.Error() != "otter config-completion is only supported on linux" {
 		t.Fatalf("expected unsupported platform error, got: %v", err)
+	}
+}
+
+func TestConfigCompletionConfiguresServiceAliasIdempotently(t *testing.T) {
+	homeDir := t.TempDir()
+	rcPath := filepath.Join(homeDir, ".bashrc")
+	if err := os.WriteFile(rcPath, []byte("export PATH=\"$PATH:/tmp/bin\"\n"), 0o644); err != nil {
+		t.Fatalf("write rc failed: %v", err)
+	}
+	root := testCompletionRoot(homeDir, "linux", "/bin/bash")
+
+	if _, err := executeTestCommand(root, "config-completion", "bash", "--service-alias", "os", "--bashrc", rcPath); err != nil {
+		t.Fatalf("first config-completion failed: %v", err)
+	}
+	if _, err := executeTestCommand(root, "config-completion", "bash", "--service-alias", "os", "--bashrc", rcPath); err != nil {
+		t.Fatalf("second config-completion failed: %v", err)
+	}
+
+	data, err := os.ReadFile(rcPath)
+	if err != nil {
+		t.Fatalf("read rc failed: %v", err)
+	}
+	content := string(data)
+	if strings.Count(content, ">>> otter:otter-service-alias-completion >>>") != 1 {
+		t.Fatalf("alias block should be idempotent, got content: %s", content)
+	}
+	if !strings.Contains(content, "alias os='otter service'") {
+		t.Fatalf("alias config not found, got: %s", content)
+	}
+	if !strings.Contains(content, "complete -o default -F _otter_service_alias_complete_os os") {
+		t.Fatalf("completion binding not found, got: %s", content)
+	}
+}
+
+func TestConfigCompletionConfiguresZshServiceAliasIdempotently(t *testing.T) {
+	homeDir := t.TempDir()
+	rcPath := filepath.Join(homeDir, ".zshrc")
+	if err := os.WriteFile(rcPath, []byte("export PATH=\"$PATH:/tmp/bin\"\n"), 0o644); err != nil {
+		t.Fatalf("write rc failed: %v", err)
+	}
+	root := testCompletionRoot(homeDir, "linux", "/bin/zsh")
+
+	if _, err := executeTestCommand(root, "config-completion", "zsh", "--service-alias", "os", "--zshrc", rcPath); err != nil {
+		t.Fatalf("first config-completion failed: %v", err)
+	}
+	if _, err := executeTestCommand(root, "config-completion", "zsh", "--service-alias", "os", "--zshrc", rcPath); err != nil {
+		t.Fatalf("second config-completion failed: %v", err)
+	}
+
+	data, err := os.ReadFile(rcPath)
+	if err != nil {
+		t.Fatalf("read rc failed: %v", err)
+	}
+	content := string(data)
+	if strings.Count(content, ">>> otter:otter-service-alias-completion >>>") != 1 {
+		t.Fatalf("alias block should be idempotent, got content: %s", content)
+	}
+	if !strings.Contains(content, "alias os='otter service'") {
+		t.Fatalf("alias config not found, got: %s", content)
+	}
+	if !strings.Contains(content, "compdef _otter_service_alias_complete_os os") {
+		t.Fatalf("completion binding not found, got: %s", content)
+	}
+}
+
+func TestConfigCompletionRejectsInvalidServiceAlias(t *testing.T) {
+	root := testCompletionRoot(t.TempDir(), "linux", "/bin/bash")
+	_, err := executeTestCommand(root, "config-completion", "bash", "--service-alias", "bad-name")
+	if err == nil || !strings.Contains(err.Error(), "invalid --service-alias") {
+		t.Fatalf("expected invalid alias error, got: %v", err)
+	}
+}
+
+func TestConfigCompletionRejectsMismatchedRCFlag(t *testing.T) {
+	root := testCompletionRoot(t.TempDir(), "linux", "/bin/zsh")
+	_, err := executeTestCommand(root, "config-completion", "zsh", "--bashrc", "/tmp/.bashrc")
+	if err == nil || !strings.Contains(err.Error(), "--bashrc can only be used with bash") {
+		t.Fatalf("expected bashrc mismatch error, got: %v", err)
 	}
 }
 

@@ -7,7 +7,7 @@
 [![Test Status](https://github.com/jeffinity/otter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jeffinity/otter/actions/workflows/ci.yml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/jeffinity/otter/branch/main/graph/badge.svg)](https://codecov.io/gh/jeffinity/otter)
 
-`otter` 是一个面向开发与运维场景的 Go CLI 工具集合。当前仓库提供应用脚手架生成、Shell 补全脚本生成与安装、版本信息展示，并正在迁移服务管理能力。
+`otter` 是一个面向开发与运维场景的 Go CLI 工具集合。
 
 主要支持平台：
 

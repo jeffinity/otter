@@ -211,9 +211,10 @@ func (b *commandBuilder) serviceCommand() *cobra.Command {
 		Use:                   "service (status) <services...>",
 		Short:                 "Manage otter services",
 		TraverseChildren:      true,
+		DisableFlagParsing:    true,
 		SilenceUsage:          true,
 		DisableFlagsInUseLine: true,
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if b.deps.RuntimeOS != "linux" {
 				return ErrUnsupportedPlatform
@@ -230,17 +231,27 @@ func (b *commandBuilder) serviceCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			opts, ok := statusCmdOptions(statusCmd)
-			if !ok {
-				return notImplemented(statusCmd, nil)
-			}
-			return b.runStatus(cmd, args, opts)
+			return runDefaultStatus(cmd, statusCmd, args)
 		},
 	}
 
 	b.addServiceCommands(cmd)
 
 	return cmd
+}
+
+func runDefaultStatus(parent *cobra.Command, statusCmd *cobra.Command, args []string) error {
+	statusCmd.SetContext(parent.Context())
+	if err := statusCmd.ParseFlags(args); err != nil {
+		return err
+	}
+	statusArgs := statusCmd.Flags().Args()
+	if statusCmd.PreRunE != nil {
+		if err := statusCmd.PreRunE(statusCmd, statusArgs); err != nil {
+			return err
+		}
+	}
+	return statusCmd.RunE(statusCmd, statusArgs)
 }
 
 func (b *commandBuilder) addServiceCommands(cmd *cobra.Command) {
@@ -268,6 +279,7 @@ func (b *commandBuilder) addServiceCommands(cmd *cobra.Command) {
 		b.installCommandCommand(),
 		b.installDockerComposeCommand(),
 		b.linkServiceCommand(),
+		b.unlinkServiceCommand(),
 		b.editCommand(),
 		b.reGenerateCommand(),
 		b.auditCommand(),
@@ -283,7 +295,7 @@ func (b *commandBuilder) statusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "status [services...]",
 		Short:             "查看服务状态",
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if opts.sortAsc && opts.sortDesc {
 				return fmt.Errorf("--asc and --desc cannot be apply in the meantime")
@@ -344,7 +356,7 @@ func (b *commandBuilder) listCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "list [services...]",
 		Short:             "列出服务信息",
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if opts.onlyPackage && opts.onlyClassic {
 				return fmt.Errorf("--only-package and --only-classic cannot be apply in the meantime")
@@ -391,7 +403,7 @@ func (b *commandBuilder) detailCommand() *cobra.Command {
 		Short:                 "获取服务的详细信息",
 		DisableFlagsInUseLine: true,
 		Args:                  cobra.MinimumNArgs(1),
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runDetail(cmd, args, opts)
 		},
@@ -441,7 +453,7 @@ func (b *commandBuilder) showPropertyCommand() *cobra.Command {
 		Aliases:           []string{"show"},
 		Short:             "查看服务参数",
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runShowProperty(cmd, args[0], opts)
 		},
@@ -472,7 +484,7 @@ func (b *commandBuilder) showPidsCommand() *cobra.Command {
 		Aliases:           []string{"show-pid", "pids", "pid"},
 		Short:             "查看服务对应的进程的 PID",
 		Args:              cobra.MinimumNArgs(1),
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runShowPids(cmd, args)
 		},
@@ -496,7 +508,7 @@ func (b *commandBuilder) showPortsCommand() *cobra.Command {
 		Aliases:           []string{"show-port", "ports", "port"},
 		Short:             "查看服务对应的进程的监听端口",
 		Args:              cobra.MinimumNArgs(1),
-		ValidArgsFunction: completeServices,
+		ValidArgsFunction: b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runShowPorts(cmd, args)
 		},
@@ -559,7 +571,7 @@ func (b *commandBuilder) groupListCommand() *cobra.Command {
 		Aliases:               []string{"list-group"},
 		Short:                 "列出组信息",
 		DisableFlagsInUseLine: true,
-		ValidArgsFunction:     completeServices,
+		ValidArgsFunction:     b.completeServices,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return b.runGroupList(cmd, opts)
 		},
@@ -612,6 +624,10 @@ func (b *commandBuilder) linkServiceCommand() *cobra.Command {
 	return b.linkServiceCommandReal()
 }
 
+func (b *commandBuilder) unlinkServiceCommand() *cobra.Command {
+	return b.unlinkServiceCommandReal()
+}
+
 func (b *commandBuilder) editCommand() *cobra.Command {
 	return b.editCommandReal()
 }
@@ -638,10 +654,6 @@ func addInstallFlags(cmd *cobra.Command, opts *installOptions) {
 }
 
 func completeEmpty(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return nil, cobra.ShellCompDirectiveDefault
-}
-
-func completeServices(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	return nil, cobra.ShellCompDirectiveDefault
 }
 

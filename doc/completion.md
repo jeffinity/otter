@@ -46,6 +46,9 @@ otter config-completion [bash|zsh|fish]
 | --- | --- |
 | `--dir <dir>` | 指定补全脚本安装目录 |
 | `--system` | 安装到常见系统级补全目录，通常需要 root 权限 |
+| `--service-alias <name>` | 仅 bash、zsh：幂等写入 `otter service` 别名及其补全桥接（例如 `os`） |
+| `--bashrc <path>` | bash 配合 `--service-alias` 指定 rc 文件，默认 `~/.bashrc` |
+| `--zshrc <path>` | zsh 配合 `--service-alias` 指定 rc 文件，默认 `~/.zshrc` |
 
 默认用户级安装目录：
 
@@ -71,7 +74,13 @@ otter config-completion zsh
 otter config-completion fish
 sudo otter config-completion --system bash
 otter config-completion --dir /tmp/completions zsh
+otter config-completion bash --service-alias os
+otter config-completion bash --service-alias os --bashrc /root/.bashrc
+otter config-completion zsh --service-alias os
+otter config-completion zsh --service-alias os --zshrc /root/.zshrc
 ```
+
+`--service-alias` 会在对应 shell 的 rc 文件中写入带 marker 的托管代码块，重复执行会覆盖同一块，不会重复追加，适合幂等执行。
 
 ## Linux 发行版差异
 
@@ -92,6 +101,7 @@ otter config-completion --dir /tmp/completions zsh
 - `bash` 补全文件需要被当前交互式 shell 加载。立即生效可执行 `source ~/.local/share/bash-completion/completions/otter`；不要直接执行该文件，也不要用 `bash ~/.local/share/bash-completion/completions/otter`，那只会在子 shell 中注册补全并随子进程退出失效。
 - `bash` 自动加载用户级目录依赖系统已启用 `bash-completion`。若重开 shell 后仍未生效，先确认系统已安装并加载 `bash-completion`。
 - `zsh` 需要安装目录在 `fpath` 中，并在 `compinit` 前配置。
+- `zsh` 若使用 `--service-alias`，还需要重新加载 `~/.zshrc` 或重开 shell，别名 `os` 才会出现。
 - `fish` 通常会自动读取用户级 completions 目录。
 
 ## 验证

@@ -64,6 +64,111 @@ func TestServiceCommandDefaultsToStatus(t *testing.T) {
 	}
 }
 
+func TestServiceCommandDefaultSupportsStatusFlags(t *testing.T) {
+	var out bytes.Buffer
+	cmd := New(Dependencies{
+		RuntimeOS: "linux",
+		StatusStore: fakeStatusStore{
+			services: []statuscmd.Service{{
+				Name:           "api",
+				UnitName:       "api.service",
+				Enabled:        true,
+				ActiveState:    "active",
+				SubState:       "running",
+				Running:        true,
+				ActiveTime:     time.Date(2026, 6, 26, 10, 0, 0, 0, time.Local),
+				ActiveTimeMono: int64(time.Hour),
+			}},
+		},
+		Out:     &out,
+		NoColor: true,
+		Now:     func() time.Time { return time.Date(2026, 6, 26, 10, 1, 0, 0, time.Local) },
+		MonoNow: func() int64 { return int64(time.Hour + time.Minute) },
+	})
+	cmd.SetArgs([]string{"-t"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("expected default status flags, got %v", err)
+	}
+	if !strings.Contains(out.String(), "api") || !strings.Contains(out.String(), "2026-06-26 10:00:00") {
+		t.Fatalf("expected status time output, got %q", out.String())
+	}
+}
+
+func TestServiceCommandDefaultUnderRootSupportsStatusFlags(t *testing.T) {
+	var out bytes.Buffer
+	root := &cobra.Command{Use: "otter"}
+	root.AddCommand(New(Dependencies{
+		RuntimeOS: "linux",
+		StatusStore: fakeStatusStore{
+			services: []statuscmd.Service{{
+				Name:           "api",
+				UnitName:       "api.service",
+				Enabled:        true,
+				ActiveState:    "active",
+				SubState:       "running",
+				Running:        true,
+				ActiveTime:     time.Date(2026, 6, 26, 10, 0, 0, 0, time.Local),
+				ActiveTimeMono: int64(time.Hour),
+			}},
+		},
+		Out:     &out,
+		NoColor: true,
+		Now:     func() time.Time { return time.Date(2026, 6, 26, 10, 1, 0, 0, time.Local) },
+		MonoNow: func() int64 { return int64(time.Hour + time.Minute) },
+	}))
+	root.SetArgs([]string{"service", "-t"})
+
+	err := root.Execute()
+	if err != nil {
+		t.Fatalf("expected root default status flags, got %v", err)
+	}
+	if !strings.Contains(out.String(), "api") || !strings.Contains(out.String(), "2026-06-26 10:00:00") {
+		t.Fatalf("expected status time output, got %q", out.String())
+	}
+}
+
+func TestServiceCommandDefaultUnderRootPassesContext(t *testing.T) {
+	var out bytes.Buffer
+	rootDir := t.TempDir()
+	classic := filepath.Join(rootDir, "classic")
+	if err := os.MkdirAll(classic, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(classic, "api.service"), []byte("[Unit]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &contextCheckRunner{
+		out: []byte("Id=api.service\nUnitFileState=enabled\nActiveState=active\nSubState=running\n"),
+	}
+	root := &cobra.Command{Use: "otter"}
+	root.AddCommand(New(Dependencies{
+		RuntimeOS: "linux",
+		FS: otterfs.New(otterfs.Config{
+			ClassicServicePath: classic,
+			PackageServicePath: filepath.Join(rootDir, "package"),
+			SystemdServicePath: filepath.Join(rootDir, "systemd"),
+		}),
+		StatusRunner: runner,
+		Out:          &out,
+		NoColor:      true,
+	}))
+	root.SetArgs([]string{"service"})
+
+	err := root.Execute()
+	if err != nil {
+		t.Fatalf("expected root default status, got %v", err)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("runner calls = %d, want 1", runner.calls)
+	}
+	if !strings.Contains(out.String(), "api") || !strings.Contains(out.String(), "running") {
+		t.Fatalf("expected status output, got %q", out.String())
+	}
+}
+
 func TestServiceCommandTree(t *testing.T) {
 	cmd := New(Dependencies{RuntimeOS: "linux"})
 
@@ -102,6 +207,7 @@ func TestServiceCommandTree(t *testing.T) {
 		{name: "install-command"},
 		{name: "exp-install-docker-compose", aliases: []string{"install-docker-compose", "idc"}},
 		{name: "link-service", aliases: []string{"link", "install-fake", "fake", "install-fake-service"}},
+		{name: "unlink-service", aliases: []string{"unlink", "unfake", "remove-fake", "remove-fake-service"}},
 		{name: "edit"},
 		{name: "re-generate", aliases: []string{"regen"}, hidden: true},
 		{name: "audit", hidden: true},
@@ -172,6 +278,51 @@ func TestServiceCommandFlags(t *testing.T) {
 
 	groupStart := assertCommand(t, cmd, "group-start")
 	assertFlags(t, groupStart, "stop-after")
+}
+
+func TestLogServiceCompletionIncludesLinkedService(t *testing.T) {
+	root := t.TempDir()
+	classicPath := filepath.Join(root, "classic")
+	packagePath := filepath.Join(root, "package")
+	systemdPath := filepath.Join(root, "systemd")
+	if err := os.MkdirAll(classicPath, 0o755); err != nil {
+		t.Fatalf("mkdir classic: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(packagePath, "pkg", "svc"), 0o755); err != nil {
+		t.Fatalf("mkdir package: %v", err)
+	}
+	if err := os.MkdirAll(systemdPath, 0o755); err != nil {
+		t.Fatalf("mkdir systemd: %v", err)
+	}
+
+	apiUnit := filepath.Join(systemdPath, "api.service")
+	if err := os.WriteFile(apiUnit, []byte("[Unit]\nDescription=api\n"), 0o644); err != nil {
+		t.Fatalf("write unit: %v", err)
+	}
+	if err := os.Symlink(apiUnit, filepath.Join(classicPath, "api.service")); err != nil {
+		t.Fatalf("create linked service: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packagePath, "pkg", "svc", "worker.service"), []byte("[Unit]\nDescription=worker\n"), 0o644); err != nil {
+		t.Fatalf("write package unit: %v", err)
+	}
+
+	cmd := New(Dependencies{
+		RuntimeOS: "linux",
+		FS: otterfs.New(otterfs.Config{
+			ClassicServicePath: classicPath,
+			PackageServicePath: packagePath,
+			SystemdServicePath: systemdPath,
+		}),
+	})
+	logCmd := assertCommand(t, cmd, "log")
+
+	names, directive := logCmd.ValidArgsFunction(logCmd, nil, "a")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Fatalf("directive = %v, want %v", directive, cobra.ShellCompDirectiveNoFileComp)
+	}
+	if got, want := strings.Join(names, ","), "api"; got != want {
+		t.Fatalf("completion = %q, want %q", got, want)
+	}
 }
 
 func TestStatusRejectsConflictingSortFlags(t *testing.T) {
@@ -838,10 +989,14 @@ func TestInstallDockerComposeAliasRuns(t *testing.T) {
 func TestLinkServiceCommandRuns(t *testing.T) {
 	root := t.TempDir()
 	unit := filepath.Join(root, "systemd", "api.service")
+	workerUnit := filepath.Join(root, "systemd", "worker.service")
 	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(unit, []byte("[Service]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workerUnit, []byte("[Service]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := New(Dependencies{
@@ -850,12 +1005,51 @@ func TestLinkServiceCommandRuns(t *testing.T) {
 			ClassicServicePath: filepath.Join(root, "classic"),
 			SystemdServicePath: filepath.Join(root, "systemd"),
 		}),
-		LinkStore: fakeStatusStore{services: []statuscmd.Service{{Name: "api", FragmentPath: unit}}},
+		LinkStore: fakeStatusStore{services: []statuscmd.Service{
+			{Name: "api", FragmentPath: unit},
+			{Name: "worker", FragmentPath: workerUnit},
+		}},
 	})
-	cmd.SetArgs([]string{"fake", "api"})
+	cmd.SetArgs([]string{"fake", "api", "worker"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("link-service failed: %v", err)
+	}
+	if target, err := os.Readlink(filepath.Join(root, "classic", "api.service")); err != nil || target != unit {
+		t.Fatalf("api link = %q, err = %v", target, err)
+	}
+	if target, err := os.Readlink(filepath.Join(root, "classic", "worker.service")); err != nil || target != workerUnit {
+		t.Fatalf("worker link = %q, err = %v", target, err)
+	}
+}
+
+func TestUnlinkServiceCommandRuns(t *testing.T) {
+	root := t.TempDir()
+	unit := filepath.Join(root, "systemd", "api.service")
+	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unit, []byte("[Service]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	classic := filepath.Join(root, "classic")
+	if err := os.MkdirAll(classic, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(unit, filepath.Join(classic, "api.service")); err != nil {
+		t.Fatal(err)
+	}
+	cmd := New(Dependencies{
+		RuntimeOS: "linux",
+		FS: otterfs.New(otterfs.Config{
+			ClassicServicePath: classic,
+			SystemdServicePath: filepath.Join(root, "systemd"),
+		}),
+	})
+	cmd.SetArgs([]string{"unlink", "api"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unlink-service failed: %v", err)
 	}
 }
 
@@ -1153,6 +1347,19 @@ type fakeStatusStore struct {
 
 func (f fakeStatusStore) List(ctx context.Context) ([]statuscmd.Service, error) {
 	return f.services, nil
+}
+
+type contextCheckRunner struct {
+	out   []byte
+	calls int
+}
+
+func (r *contextCheckRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	if ctx == nil {
+		return nil, errors.New("nil context")
+	}
+	r.calls++
+	return r.out, nil
 }
 
 type fakeDetailRunner struct {
